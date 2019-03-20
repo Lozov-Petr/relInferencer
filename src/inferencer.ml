@@ -72,8 +72,9 @@ let rec type_inferencero ctors env expr typ =
       (typ === tArrow tX tBody)
       (infero (pair x tX % env) body tBody);
 
-    fresh (scr tScr cases)
+    fresh (scr tScr cases c cs)
       (expr === eMatch scr cases)
+      (cases === c % cs)
       (infero env scr tScr)
       (forallo (case_infero env tScr typ) cases)
 
