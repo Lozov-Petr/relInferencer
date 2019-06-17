@@ -6,6 +6,7 @@ open Tester
 
 open Syntax
 open Inferencer
+open Eval
 
 let rec typ_reify x = For_typ.reify MiniKanren.reify typ_reify x
 
@@ -57,6 +58,31 @@ let expr_run x = runR expr_reify expr_show lexpr_show x
 
 (****************************************)
 
+let rec val_reify x = For_value.reify
+                        MiniKanren.reify
+                        MiniKanren.reify
+                        expr_reify
+                        (List.reify @@ Pair.reify MiniKanren.reify val_reify)
+                        (List.reify val_reify) x
+
+let rec val_show x = show value
+                      (show string)
+                      (show string)
+                      expr_show
+                      (show List.ground @@ show Pair.ground (show string) val_show)
+                      (show List.ground val_show) x
+
+let rec lval_show x = (show logic @@ show value
+                       (show logic @@ show string)
+                       (show logic @@ show string)
+                       lexpr_show
+                       (show List.logic @@ show Pair.logic (show logic @@ show string) lval_show)
+                       (show List.logic lval_show)) x
+
+let val_run x = runR val_reify val_show lval_show x
+
+(****************************************)
+
 let varX () = eVar !!"x"
 let varY () = eVar !!"y"
 
@@ -89,6 +115,8 @@ let tPair () = tBase !!"Pair"
 let ePair a b = eCtor !!"pair" (a %< b)
 
 let pair_info ta tb = ctor_info !!"pair" (tPair ()) (ta %< tb)
+
+(****************************************)
 
 let () =
 
@@ -204,3 +232,66 @@ let () =
         (tArrow (tBool ()) (tBool ()))
       )
   );
+  ()
+
+(****************************************)
+(****************************************)
+(****************************************)
+
+let add () =
+  eAbst !!"x" (eAbst !!"y" (
+    eMatch (eVar !!"x") (List.list [
+      pair (pCtor !!"O" (nil ()))              (eVar !!"y");
+      pair (pCtor !!"S" (pVar !!"a" % nil ())) (eCtor !!"S" (eApp (eApp (eVar !!"add") (eVar !!"a")) (eVar !!"y") % nil ()))
+    ])
+  ))
+
+let rec int2enat n = if n = 0 then eCtor !!"O" (nil ())
+                              else eCtor !!"S" (int2enat (n - 1) % nil ())
+
+let rec int2vnat n = if n = 0 then vCtor !!"O" (nil ())
+                              else vCtor !!"S" (int2vnat (n - 1) % nil ())
+
+(****************************************)
+
+let () =
+  val_run (-1) q qh ("eval 'fun x -> x'",
+    fun q ->
+      evalo (nil ()) (id ()) q
+    );
+
+  val_run (-1) q qh ("eval '(fun x -> x) true'",
+    fun q ->
+      evalo (nil ()) (eApp (id ()) (eCtor !!"true" (nil ()))) q
+    );
+
+  val_run (-1) q qh ("eval 'not true'",
+    fun q ->
+      evalo (nil ()) (eApp (fnot ()) (eCtor !!"true" (nil ()))) q
+    );
+
+  expr_run (1) q qh ("eval 'Q true' 'false' /\\ eval 'Q false' 'true'",
+    fun q ->
+      evalo (nil ()) (eApp q (eCtor !!"true" (nil ()))) (vCtor !!"false" (nil ())) &&&
+      evalo (nil ()) (eApp q (eCtor !!"false" (nil ()))) (vCtor !!"true" (nil ()))
+    );
+
+    expr_run (2) q qh ("eval 'Q O' 'O' /\\ eval 'Q (S O)' 'O'",
+      fun q ->
+        (evalo (nil ()) (eApp q (int2enat 0)) (int2vnat 0)) &&&
+        (evalo (nil ()) (eApp q (int2enat 1)) (int2vnat 0)) &&&
+        (evalo (nil ()) (eApp q (int2enat 2)) (int2vnat 1))
+      );
+
+  expr_run (10) q qh ("reeeeec",
+    fun q -> fresh (a b c)
+      (q === eAbst !!"x" (eAbst !!"y" (eMatch (eVar !!"x") (List.list [pair (pCtor !!"O" (nil ())) (eVar !!"y");
+                                                                       pair (pCtor !!"S" (pVar !!"z" % nil ())) (eCtor !!"S" (eApp (eApp a b) c % nil ()))]))))
+      (evalo (nil ()) (eApp (eAbst !!"add" (eApp (eApp (eVar !!"add") (int2enat 0)) (int2enat 0))) q) (int2vnat 0))
+      (evalo (nil ()) (eApp (eAbst !!"add" (eApp (eApp (eVar !!"add") (int2enat 0)) (int2enat 1))) q) (int2vnat 1))
+      (evalo (nil ()) (eApp (eAbst !!"add" (eApp (eApp (eVar !!"add") (int2enat 1)) (int2enat 0))) q) (int2vnat 1))
+      (evalo (nil ()) (eApp (eAbst !!"add" (eApp (eApp (eVar !!"add") (int2enat 1)) (int2enat 1))) q) (int2vnat 2))
+      (evalo (nil ()) (eApp (eAbst !!"add" (eApp (eApp (eVar !!"add") (int2enat 5)) (int2enat 4))) q) (int2vnat 9))
+    );
+
+  ()
